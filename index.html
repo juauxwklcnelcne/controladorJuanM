@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control LED ESP32</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #212437 40%, #3a86ff 100%);
+      color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: rgba(34, 40, 49, 0.97);
+      border-radius: 1.5rem;
+      box-shadow: 0 6px 32px 0 rgba(0,0,0,0.25);
+      padding: 2.2rem;
+      text-align: center;
+      width: 90%;
+      max-width: 400px;
+    }
+    h2 {
+      font-size: 2.2em;
+      margin-bottom: 0.6em;
+      font-weight: 600;
+    }
+    .notification {
+      display: none;
+      font-weight: 500;
+      font-size: 1.04em;
+      color: #fff;
+      background: #06d6a0;
+      padding: 1em 2em;
+      border-radius: 1.2em;
+      margin-bottom: 1em;
+    }
+    .login-container {
+      margin-bottom: 1em;
+    }
+    .login-container input {
+      width: 100%;
+      margin: 0.5em 0;
+      padding: 0.8em;
+      border-radius: 0.5em;
+      border: none;
+      box-sizing: border-box;
+    }
+    .login-container button {
+      width: 100%;
+      padding: 0.8em;
+      border-radius: 0.5em;
+      border: none;
+      background: #06d6a0;
+      color: #222;
+      cursor: pointer;
+      font-size: 1em;
+      margin-top: 0.5em;
+    }
+    .login-container button:hover {
+      background: #40f7cb;
+    }
+    .led-img {
+      margin: 1.6em 0 1.8em 0;
+      display: flex;
+      justify-content: center;
+    }
+    .bulb {
+      width: 72px;
+      height: 92px;
+      transition: filter 0.3s;
+      filter: drop-shadow(0 0 16px #ffe25999);
+    }
+    .bulb.off {
+      filter: grayscale(0.7) brightness(0.75);
+    }
+    button {
+      font-size: 1.3em;
+      margin: 0 0.7em;
+      padding: 0.9em 2.3em;
+      border-radius: 2em;
+      border: none;
+      cursor: pointer;
+    }
+    .on-btn {
+      background: #06d6a0;
+      color: #222;
+    }
+    .on-btn:hover {
+      background: #40f7cb;
+    }
+    .off-btn {
+      background: #ef476f;
+      color: #fff;
+    }
+    .off-btn:hover {
+      background: #fa9bb4;
+      color: #222;
+    }
+    .footer {
+      margin-top: 2.0em;
+      font-size: 0.95em;
+      color: #bbb;
+    }
+  </style>
+  <!-- Incluye los SDKs de Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <script>
+    // Configuración de Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBe_zGz4U5piKi4eg7sKTGEFs_IcNf63Is",
+      authDomain: "esp32-controlador-bombillo.firebaseapp.com",
+      databaseURL: "https://esp32-controlador-bombillo-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "esp32-controlador-bombillo",
+      storageBucket: "esp32-controlador-bombillo.appspot.com",
+      messagingSenderId: "684263911286",
+      appId: "1:684263911286:web:3396694135a8feedcdd457"
+    };
+
+    // Inicializa Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // Configuración de autenticación
+    const allowedEmail = "usuario@ejemplo.com"; // Reemplaza con el correo permitido
+    const allowedPassword = "900000"; // Reemplaza con la contraseña permitida
+
+    // Función para iniciar sesión
+    function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      firebase.auth().signInWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+          // Usuario ha iniciado sesión
+          var user = userCredential.user;
+          console.log("Usuario ha iniciado sesión:", user);
+          showNotification('¡Inicio de sesión exitoso!', '#06d6a0');
+          document.getElementById('login-container').style.display = 'none';
+          document.getElementById('control-container').style.display = 'block';
+          loadLedStatus();
+        })
+        .catch((error) => {
+          var errorCode = error.code;
+          var errorMessage = error.message;
+          console.error("Error en inicio de sesión:", errorMessage);
+          showNotification('Error en inicio de sesión: ' + errorMessage, '#ef476f');
+        });
+    }
+
+    function showNotification(msg, color) {
+      var note = document.getElementById('notification');
+      note.innerHTML = msg;
+      note.style.display = 'block';
+      note.style.background = color || "#06d6a0";
+      setTimeout(function() { note.style.display = 'none'; }, 2000);
+    }
+
+    function setBulb(state) {
+      var bulb = document.getElementById('bulb');
+      if(state === 'on') bulb.classList.remove('off');
+      else bulb.classList.add('off');
+    }
+
+    function updateStatus(state) {
+      document.getElementById('ledState').innerHTML = "Estado del LED: <b>" + (state === 'on' ? 'ENCENDIDO' : 'APAGADO') + "</b>";
+      setBulb(state);
+    }
+
+    function setLed(action) {
+      database.ref('ledState').set(action)
+        .then(() => {
+          updateStatus(action);
+          showNotification('¡El LED está ' + (action === 'on' ? 'ENCENDIDO! 💡' : 'APAGADO.'), action === 'on' ? '#06d6a0' : '#ef476f');
+        })
+        .catch((error) => {
+          showNotification('Error al actualizar el estado del LED: ' + error.message, '#505050');
+          updateStatus('desconocido');
+        });
+    }
+
+    function loadLedStatus() {
+      database.ref('ledState').once('value')
+        .then((snapshot) => {
+          const data = snapshot.val();
+          if (data) updateStatus(data);
+          else updateStatus('desconocido');
+        })
+        .catch((error) => {
+          showNotification('Error al cargar el estado del LED: ' + error.message, '#505050');
+          updateStatus('desconocido');
+        });
+    }
+  </script>
+</head>
+<body>
+  <div class="container" id="login-container">
+    <h2>Iniciar Sesión</h2>
+    <div class="notification" id="notification"></div>
+    <div class="login-container">
+      <input type="email" id="email" placeholder="Correo electrónico">
+      <input type="password" id="password" placeholder="Contraseña">
+      <button onclick="login()">Iniciar sesión</button>
+    </div>
+  </div>
+
+  <div class="container" id="control-container" style="display: none;">
+    <h2>Controlador</h2>
+    <div class="notification" id="control-notification"></div>
+    <div class="led-img">
+      <svg id="bulb" class="bulb off" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 62">
+        <ellipse cx="24" cy="24" rx="18" ry="21" fill="#ffe259"/>
+        <ellipse cx="24" cy="27" rx="14" ry="15" fill="#fff59e" opacity="0.8"/>
+        <rect x="18" y="42" width="12" height="12" rx="4" fill="#c7c7c7"/>
+        <rect x="17" y="52" width="14" height="6" rx="3" fill="#bbb"/>
+        <rect x="19" y="55" width="10" height="3" rx="1.5" fill="#999"/>
+      </svg>
+    </div>
+    <div class="led-status" id="ledState">Estado del LED: <b>Desconocido</b></div>
+    <button class="on-btn" onclick="setLed('on')">ENCENDER</button>
+    <button class="off-btn" onclick="setLed('off')">APAGAR</button>
+    <div class="footer">© 2025 - Proyecto IoT Juan Montoya </div>
+  </div>
+</body>
+</html>
